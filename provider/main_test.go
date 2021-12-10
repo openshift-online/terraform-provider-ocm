@@ -131,7 +131,10 @@ func (b *TerraformRunnerBuilder) Build() *TerraformRunner {
 		provider_installation {
 		  filesystem_mirror {
 		    path    = "{{ .Project }}/.terraform.d/plugins"
-		    include = ["localhost/*/*"]
+		    include = ["openshift-online/ocm"]
+		  }
+		  direct {
+		    exclude = ["openshift-online/ocm"]
 		  }
 		}
 		`,
@@ -146,7 +149,7 @@ func (b *TerraformRunnerBuilder) Build() *TerraformRunner {
 		terraform {
 		  required_providers {
 		    ocm = {
-		      source = "localhost/openshift-online/ocm"
+		      source = "openshift-online/ocm"
 		    }
 		  }
 		}

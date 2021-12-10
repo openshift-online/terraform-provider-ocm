@@ -83,7 +83,10 @@ to add something like this to your Terraform CLI configuration file:
 provider_installation {
   filesystem_mirror {
     path    = "/files/projects/terraform-provider-ocm/repository/.terraform.d/plugins"
-    include = ["localhost/*/*"]
+    include = ["openshift-online/ocm"]
+  }
+  direct {
+    exclude = ["openshift-online/ocm"]
   }
 }
 ```
@@ -99,7 +102,10 @@ $ cat >/files/projects/terraform-provider-ocm/terraform.rc <<.
 provider_installation {
   filesystem_mirror {
     path    = "/files/projects/terraform-provider-ocm/repository/.terraform.d/plugins"
-    include = ["localhost/*/*"]
+    include = ["openshift-online/ocm"]
+  }
+  direct {
+    exclude = ["openshift-online/ocm"]
   }
 }
 .

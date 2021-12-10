@@ -38,6 +38,15 @@ type ClusterState struct {
 	Name               types.String `tfsdk:"name"`
 	PodCIDR            types.String `tfsdk:"pod_cidr"`
 	Properties         types.Map    `tfsdk:"properties"`
+	STSCSIRole         types.String `tfsdk:"sts_csi_role"`
+	STSCloudRole       types.String `tfsdk:"sts_cloud_role"`
+	STSControlRole     types.String `tfsdk:"sts_control_role"`
+	STSIngressRole     types.String `tfsdk:"sts_ingress_role"`
+	STSMachineRole     types.String `tfsdk:"sts_machine_role"`
+	STSRegistryRole    types.String `tfsdk:"sts_registry_role"`
+	STSRole            types.String `tfsdk:"sts_role"`
+	STSSupportRole     types.String `tfsdk:"sts_support_role"`
+	STSWorkerRole      types.String `tfsdk:"sts_worker_role"`
 	ServiceCIDR        types.String `tfsdk:"service_cidr"`
 	State              types.String `tfsdk:"state"`
 	Version            types.String `tfsdk:"version"`
