@@ -275,6 +275,180 @@ var _ = Describe("Cluster creation", func() {
 		Expect(resource).To(MatchJQ(".attributes.version", "openshift-v4.8.1"))
 	})
 
+	It("Sets STS attributes", func() {
+		// Prepare the server:
+		server.AppendHandlers(
+			CombineHandlers(
+				VerifyRequest(http.MethodPost, "/api/clusters_mgmt/v1/clusters"),
+				VerifyJQ(
+					`.aws.sts.role_arn`,
+					`arn:aws:iam::000000000000:role/my-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.support_role_arn`,
+					`arn:aws:iam::000000000000:role/my-support-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-machine-api") | .name`,
+					`aws-cloud-credentials`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-machine-api") | .role_arn`,
+					`arn:aws:iam::000000000000:role/my-machine-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-cloud-credential-operator") | .name`,
+					`cloud-credential-operator-iam-ro-creds`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-cloud-credential-operator") | .role_arn`,
+					`arn:aws:iam::000000000000:role/my-cloud-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-image-registry") | .name`,
+					`installer-cloud-credentials`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-image-registry") | .role_arn`,
+					`arn:aws:iam::000000000000:role/my-registry-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-ingress-operator") | .name`,
+					`cloud-credentials`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-ingress-operator") | .role_arn`,
+					`arn:aws:iam::000000000000:role/my-ingress-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-cluster-csi-drivers") | .name`,
+					`ebs-cloud-credentials`,
+				),
+				VerifyJQ(
+					`.aws.sts.operator_iam_roles[] | select(.namespace == "openshift-cluster-csi-drivers") | .role_arn`,
+					`arn:aws:iam::000000000000:role/my-csi-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.instance_iam_roles.master_role_arn`,
+					`arn:aws:iam::000000000000:role/my-control-role`,
+				),
+				VerifyJQ(
+					`.aws.sts.instance_iam_roles.worker_role_arn`,
+					`arn:aws:iam::000000000000:role/my-worker-role`,
+				),
+				RespondWithPatchedJSON(http.StatusOK, template, `[
+				  {
+				    "op": "replace",
+				    "path": "/ccs",
+				    "value": {
+				      "enabled": true
+				    }
+				  },
+				  {
+				    "op": "add",
+				    "path": "/aws",
+				    "value": {
+				      "sts": {
+				        "role_arn": "arn:aws:iam::000000000000:role/my-role",
+				        "support_role_arn": "arn:aws:iam::000000000000:role/my-support-role",
+				        "operator_iam_roles": [
+				          {
+				            "namespace": "openshift-machine-api",
+				            "name": "aws-cloud-credentials",
+				            "role_arn": "arn:aws:iam::000000000000:role/my-machine-role"
+				          },
+				          {
+				            "namespace": "openshift-cloud-credential-operator",
+				            "name": "cloud-credential-operator-iam-ro-creds",
+				            "role_arn": "arn:aws:iam::000000000000:role/my-cloud-role"
+				          },
+				          {
+				            "namespace": "openshift-image-registry",
+				            "name": "installer-cloud-credentials",
+				            "role_arn": "arn:aws:iam::000000000000:role/my-registry-role"
+				          },
+				          {
+				            "namespace": "openshift-ingress-operator",
+				            "name": "cloud-credentials",
+				            "role_arn": "arn:aws:iam::000000000000:role/my-ingress-role"
+				          },
+				          {
+				            "namespace": "openshift-cluster-csi-drivers",
+				            "name": "ebs-cloud-credentials", 
+				            "role_arn": "arn:aws:iam::000000000000:role/my-csi-role"
+				          }
+				        ],
+				        "instance_iam_roles": {
+				          "master_role_arn": "arn:aws:iam::00000000000:role/my-control-role",
+				          "worker_role_arn": "arn:aws:iam::00000000000:role/my-worker-role"
+				        }
+				      }
+				    }
+				  }
+				]`),
+			),
+		)
+
+		// Run the apply command:
+		terraform.Source(`
+		  resource "ocm_cluster" "my_cluster" {
+		    name              = "my-cluster"
+		    cloud_provider    = "aws"
+		    cloud_region      = "us-west-1"
+		    ccs_enabled       = true
+		    sts_role          = "arn:aws:iam::000000000000:role/my-role"
+		    sts_support_role  = "arn:aws:iam::000000000000:role/my-support-role"
+		    sts_machine_role  = "arn:aws:iam::000000000000:role/my-machine-role"
+		    sts_cloud_role    = "arn:aws:iam::000000000000:role/my-cloud-role"
+		    sts_registry_role = "arn:aws:iam::000000000000:role/my-registry-role"
+		    sts_ingress_role  = "arn:aws:iam::000000000000:role/my-ingress-role"
+		    sts_csi_role      = "arn:aws:iam::000000000000:role/my-csi-role"
+		    sts_control_role  = "arn:aws:iam::000000000000:role/my-control-role"
+		    sts_worker_role   = "arn:aws:iam::000000000000:role/my-worker-role"
+		  }
+		`)
+		Expect(terraform.Apply()).To(BeZero())
+
+		// Check the state:
+		resource := terraform.Resource("ocm_cluster", "my_cluster")
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_role",
+			"arn:aws:iam::000000000000:role/my-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_support_role",
+			"arn:aws:iam::000000000000:role/my-support-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_machine_role",
+			"arn:aws:iam::000000000000:role/my-machine-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_cloud_role",
+			"arn:aws:iam::000000000000:role/my-cloud-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_registry_role",
+			"arn:aws:iam::000000000000:role/my-registry-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_ingress_role",
+			"arn:aws:iam::000000000000:role/my-ingress-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_csi_role",
+			"arn:aws:iam::000000000000:role/my-csi-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_control_role",
+			"arn:aws:iam::000000000000:role/my-control-role",
+		))
+		Expect(resource).To(MatchJQ(
+			".attributes.sts_worker_role",
+			"arn:aws:iam::000000000000:role/my-worker-role",
+		))
+	})
+
 	It("Fails if the cluster already exists", func() {
 		// Prepare the server:
 		server.AppendHandlers(

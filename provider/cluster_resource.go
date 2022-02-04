@@ -133,6 +133,56 @@ func (t *ClusterResourceType) GetSchema(ctx context.Context) (result tfsdk.Schem
 				Optional:    true,
 				Sensitive:   true,
 			},
+			"sts_role": {
+				Description: "Name of the AWS role used by the cluster.",
+				Type:        types.StringType,
+				Optional:    true,
+			},
+			"sts_support_role": {
+				Description: "Name of the AWS role used for support activities.",
+				Type:        types.StringType,
+				Optional:    true,
+			},
+			"sts_machine_role": {
+				Description: "Name of the AWS role used by the machine " +
+					"API controller.",
+				Type:     types.StringType,
+				Optional: true,
+			},
+			"sts_cloud_role": {
+				Description: "Name of the AWS role used by the cloud " +
+					"credentials operator.",
+				Type:     types.StringType,
+				Optional: true,
+			},
+			"sts_registry_role": {
+				Description: "Name of the AWS role used by image " +
+					"registry operator.",
+				Type:     types.StringType,
+				Optional: true,
+			},
+			"sts_ingress_role": {
+				Description: "Name of the AWS role used by image " +
+					"ingress operator.",
+				Type:     types.StringType,
+				Optional: true,
+			},
+			"sts_csi_role": {
+				Description: "Name of the AWS role used by CSI " +
+					"drivers operator.",
+				Type:     types.StringType,
+				Optional: true,
+			},
+			"sts_control_role": {
+				Description: "Name of the AWS role used by control plane nodes.",
+				Type:        types.StringType,
+				Optional:    true,
+			},
+			"sts_worker_role": {
+				Description: "Name of the AWS role used by worker nodes.",
+				Type:        types.StringType,
+				Optional:    true,
+			},
 			"machine_cidr": {
 				Description: "Block of IP addresses for nodes.",
 				Type:        types.StringType,
@@ -248,6 +298,75 @@ func (r *ClusterResource) Create(ctx context.Context,
 	}
 	if !state.AWSSecretAccessKey.Unknown && !state.AWSSecretAccessKey.Null {
 		aws.SecretAccessKey(state.AWSSecretAccessKey.Value)
+	}
+	awsSTS := cmv1.NewSTS()
+	if !state.STSRole.Unknown && !state.STSRole.Null {
+		awsSTS.RoleARN(state.STSRole.Value)
+	}
+	if !state.STSSupportRole.Unknown && !state.STSSupportRole.Null {
+		awsSTS.SupportRoleARN(state.STSSupportRole.Value)
+	}
+	var awsSTSOperatorRoles []*cmv1.OperatorIAMRoleBuilder
+	if !state.STSMachineRole.Unknown && !state.STSMachineRole.Null {
+		awsSTSOperatorRoles = append(
+			awsSTSOperatorRoles,
+			cmv1.NewOperatorIAMRole().
+				Namespace("openshift-machine-api").
+				Name("aws-cloud-credentials").
+				RoleARN(state.STSMachineRole.Value),
+		)
+	}
+	if !state.STSCloudRole.Unknown && !state.STSCloudRole.Null {
+		awsSTSOperatorRoles = append(
+			awsSTSOperatorRoles,
+			cmv1.NewOperatorIAMRole().
+				Namespace("openshift-cloud-credential-operator").
+				Name("cloud-credential-operator-iam-ro-creds").
+				RoleARN(state.STSCloudRole.Value),
+		)
+	}
+	if !state.STSRegistryRole.Unknown && !state.STSRegistryRole.Null {
+		awsSTSOperatorRoles = append(
+			awsSTSOperatorRoles,
+			cmv1.NewOperatorIAMRole().
+				Namespace("openshift-image-registry").
+				Name("installer-cloud-credentials").
+				RoleARN(state.STSRegistryRole.Value),
+		)
+	}
+	if !state.STSIngressRole.Unknown && !state.STSIngressRole.Null {
+		awsSTSOperatorRoles = append(
+			awsSTSOperatorRoles,
+			cmv1.NewOperatorIAMRole().
+				Namespace("openshift-ingress-operator").
+				Name("cloud-credentials").
+				RoleARN(state.STSIngressRole.Value),
+		)
+	}
+	if !state.STSCSIRole.Unknown && !state.STSCSIRole.Null {
+		awsSTSOperatorRoles = append(
+			awsSTSOperatorRoles,
+			cmv1.NewOperatorIAMRole().
+				Namespace("openshift-cluster-csi-drivers").
+				Name("ebs-cloud-credentials").
+				RoleARN(state.STSCSIRole.Value),
+		)
+	}
+	if len(awsSTSOperatorRoles) > 0 {
+		awsSTS.OperatorIAMRoles(awsSTSOperatorRoles...)
+	}
+	awsSTSInstanceRoles := cmv1.NewInstanceIAMRoles()
+	if !state.STSControlRole.Unknown && !state.STSControlRole.Null {
+		awsSTSInstanceRoles.MasterRoleARN(state.STSControlRole.Value)
+	}
+	if !state.STSWorkerRole.Unknown && !state.STSWorkerRole.Null {
+		awsSTSInstanceRoles.WorkerRoleARN(state.STSWorkerRole.Value)
+	}
+	if !awsSTSInstanceRoles.Empty() {
+		awsSTS.InstanceIAMRoles(awsSTSInstanceRoles)
+	}
+	if !awsSTS.Empty() {
+		aws.STS(awsSTS)
 	}
 	if !aws.Empty() {
 		builder.AWS(aws)
@@ -561,6 +680,26 @@ func (r *ClusterResource) populateState(object *cmv1.Cluster, state *ClusterStat
 		}
 	} else {
 		state.AWSSecretAccessKey = types.String{
+			Null: true,
+		}
+	}
+	stsRoleARN, ok := object.AWS().STS().GetRoleARN()
+	if ok {
+		state.STSRole = types.String{
+			Value: stsRoleARN,
+		}
+	} else {
+		state.STSRole = types.String{
+			Null: true,
+		}
+	}
+	stsSupportRoleARN, ok := object.AWS().STS().GetSupportRoleARN()
+	if ok {
+		state.STSSupportRole = types.String{
+			Value: stsSupportRoleARN,
+		}
+	} else {
+		state.STSSupportRole = types.String{
 			Null: true,
 		}
 	}
