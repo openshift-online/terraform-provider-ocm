@@ -1,6 +1,6 @@
 module github.com/openshift-online/terraform-provider-ocm
 
-go 1.17
+go 1.18
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v0.5.0
@@ -69,4 +69,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/openshift-online/ocm-sdk-go v0.1.240 => github.com/openshift-online/ocm-sdk-go v0.1.275
+replace github.com/openshift-online/ocm-sdk-go v0.1.240 => github.com/openshift-online/ocm-sdk-go v0.1.276

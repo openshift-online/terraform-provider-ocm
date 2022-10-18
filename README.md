@@ -23,7 +23,7 @@ terraform {
   required_providers {
     ocm = {
       version = ">= 0.1"
-      source  = "openshift-online/ocm"
+      source  = "rh-mobb/ocm"
     }
   }
 }
@@ -134,6 +134,10 @@ resource "ocm_cluster" "rosa_cluster" {
   }
   wait = false
   sts = local.sts_roles
+}
+
+resource "ocm_cluster_wait" "rosa_cluster" {
+  cluster = ocm_cluster.rosa_cluster.id
 }
 
 module sts_roles {
