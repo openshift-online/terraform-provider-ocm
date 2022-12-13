@@ -294,7 +294,7 @@ var _ = Describe("Cluster creation", func() {
 		Expect(resource).To(MatchJQ(".attributes.version", "openshift-v4.8.1"))
 	})
 
-	It("Sets additional trust bundle", func() {
+	FIt("Sets additional trust bundle", func() {
 		test_value := `-----BEGIN PRIVATE KEY-----
 MIIJRAIBADANBgkqhkiG9w0BAQEFAASCCS4wggkqAgEAAoICAQDhWjMs8duhWL7y
 UR4sXQG2z8xls6K+ywxztDxLohts96QQrk747U3YHLW2hmEJaDK41c2YyfCkIRpW
@@ -384,12 +384,12 @@ WlOQEm17QK7K3stHjDFVPZ7XJf/ys1cucBJKd8MpYchuwLwEVepdKLQqFYU=
 		server.AppendHandlers(
 			CombineHandlers(
 				VerifyRequest(http.MethodPost, "/api/clusters_mgmt/v1/clusters"),
-				VerifyJQ(".additional_trust_bundle", jsonEscape(test_value)),
+				VerifyJQ(".additional_trust_bundle", test_value),
 				RespondWithPatchedJSON(http.StatusOK, template, `[
 				  {
 				    "op": "add",
 				    "path": "/additional_trust_bundle",
-				    "value": "`+jsonEscape(test_value)+`"
+				    "value": "`+test_value+`"
 				  }
 				]`),
 			),
@@ -402,14 +402,16 @@ WlOQEm17QK7K3stHjDFVPZ7XJf/ys1cucBJKd8MpYchuwLwEVepdKLQqFYU=
 			product		   = "osd"
 		    cloud_provider = "aws"
 		    cloud_region   = "us-west-1"
-		    additional_trust_bundle = jsonencode("` + test_value + `")
+		    additional_trust_bundle = <<EOT
+` + test_value + `
+			EOT
 		  }
 		`)
 		Expect(terraform.Apply()).To(BeZero())
 
 		// Check the state:
-		//resource := terraform.Resource("ocm_cluster", "my_cluster")
-		//Expect(resource).To(MatchJQ(".attributes.additional_trust_bundle", test_value))
+		resource := terraform.Resource("ocm_cluster", "my_cluster")
+		Expect(resource).To(MatchJQ(".attributes.additional_trust_bundle", test_value))
 	})
 
 	It("Fails if the cluster already exists", func() {
