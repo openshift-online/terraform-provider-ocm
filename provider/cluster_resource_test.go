@@ -19,6 +19,7 @@ package provider
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"             // nolint
 	. "github.com/onsi/gomega"                         // nolint
@@ -384,12 +385,12 @@ WlOQEm17QK7K3stHjDFVPZ7XJf/ys1cucBJKd8MpYchuwLwEVepdKLQqFYU=
 		server.AppendHandlers(
 			CombineHandlers(
 				VerifyRequest(http.MethodPost, "/api/clusters_mgmt/v1/clusters"),
-				VerifyJQ(".additional_trust_bundle", test_value),
+				VerifyJQ(".additional_trust_bundle", test_value+"\n"),
 				RespondWithPatchedJSON(http.StatusOK, template, `[
 				  {
 				    "op": "add",
 				    "path": "/additional_trust_bundle",
-				    "value": "`+test_value+`"
+				    "value": "`+strings.ReplaceAll(test_value, "\n", `\n`)+`"
 				  }
 				]`),
 			),
@@ -404,14 +405,14 @@ WlOQEm17QK7K3stHjDFVPZ7XJf/ys1cucBJKd8MpYchuwLwEVepdKLQqFYU=
 		    cloud_region   = "us-west-1"
 		    additional_trust_bundle = <<EOT
 ` + test_value + `
-			EOT
+EOT
 		  }
 		`)
 		Expect(terraform.Apply()).To(BeZero())
 
 		// Check the state:
 		resource := terraform.Resource("ocm_cluster", "my_cluster")
-		Expect(resource).To(MatchJQ(".attributes.additional_trust_bundle", test_value))
+		Expect(resource).To(MatchJQ(".attributes.additional_trust_bundle", test_value+"\n"))
 	})
 
 	It("Fails if the cluster already exists", func() {
