@@ -295,7 +295,7 @@ var _ = Describe("Cluster creation", func() {
 		Expect(resource).To(MatchJQ(".attributes.version", "openshift-v4.8.1"))
 	})
 
-	FIt("Sets additional trust bundle", func() {
+	It("Sets additional trust bundle", func() {
 		test_value := `-----BEGIN PRIVATE KEY-----
 MIIJRAIBADANBgkqhkiG9w0BAQEFAASCCS4wggkqAgEAAoICAQDhWjMs8duhWL7y
 UR4sXQG2z8xls6K+ywxztDxLohts96QQrk747U3YHLW2hmEJaDK41c2YyfCkIRpW
