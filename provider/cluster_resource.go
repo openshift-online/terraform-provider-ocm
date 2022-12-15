@@ -199,6 +199,11 @@ func (t *ClusterResourceType) GetSchema(ctx context.Context) (result tfsdk.Schem
 				}),
 				Optional: true,
 			},
+			"additional_trust_bundle": {
+				Description: "Additional certificates to trust (for transparent proxy)",
+				Type:        types.StringType,
+				Optional:    true,
+			},
 			"service_cidr": {
 				Description: "Block of IP addresses for services.",
 				Type:        types.StringType,
@@ -392,6 +397,10 @@ func (r *ClusterResource) Create(ctx context.Context,
 		proxy.HTTPProxy(state.Proxy.HttpProxy.Value)
 		proxy.HTTPSProxy(state.Proxy.HttpsProxy.Value)
 		builder.Proxy(proxy)
+	}
+
+	if !state.AdditionalTrustBundle.Unknown && !state.AdditionalTrustBundle.Null {
+		builder.AdditionalTrustBundle(state.AdditionalTrustBundle.Value)
 	}
 
 	object, err := builder.Build()
