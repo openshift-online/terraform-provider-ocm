@@ -36,9 +36,16 @@ ldflags:=\
 	-X $(import_path)/build.Commit=$(commit) \
 	$(NULL)
 
+.PHONY: gen-mocks
+gen-mocks:
+	mockgen -source=provider/cluster_resource.go -destination=provider/cluster_resource_mock.go -package provider
+
 .PHONY: build
 build:
 	go build -ldflags="$(ldflags)" -o ${BINARY}
+
+generate-mocks:
+	mockgen -source=provider/cluster_resource.go -destination=provider/cluster_resource_mock.go -package provider
 
 .PHONY: install
 install: build
