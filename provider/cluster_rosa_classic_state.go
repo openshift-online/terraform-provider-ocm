@@ -35,6 +35,7 @@ type ClusterRosaClassicState struct {
 	ComputeMachineType types.String `tfsdk:"compute_machine_type"`
 	ComputeNodes       types.Int64  `tfsdk:"compute_nodes"`
 	ConsoleURL         types.String `tfsdk:"console_url"`
+	Domain             types.String `tfsdk:"domain"`
 	HostPrefix         types.Int64  `tfsdk:"host_prefix"`
 	ID                 types.String `tfsdk:"id"`
 	ExternalID         types.String `tfsdk:"external_id"`

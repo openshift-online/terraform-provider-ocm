@@ -143,6 +143,11 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Type:        types.StringType,
 				Computed:    true,
 			},
+			"domain": {
+				Description: "DNS Domain of Cluster",
+				Type:        types.StringType,
+				Computed:    true,
+			},
 			"compute_nodes": {
 				Description: "Number of compute nodes of the cluster.",
 				Type:        types.Int64Type,
@@ -685,6 +690,9 @@ func populateRosaClassicClusterState(ctx context.Context, object *cmv1.Cluster, 
 	}
 	state.ConsoleURL = types.String{
 		Value: object.Console().URL(),
+	}
+	state.Domain = types.String{
+		Value: fmt.Sprintf("%s.%s", object.Name(), object.DNS().BaseDomain()),
 	}
 	state.ComputeNodes = types.Int64{
 		Value: int64(object.Nodes().Compute()),
