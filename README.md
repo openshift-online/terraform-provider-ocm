@@ -1,3 +1,5 @@
+# <span style="color:red">This repository has been deprecated and moved to the following repository: [terraform-redhat/terraform-provider-ocm](https://github.com/terraform-redhat/terraform-provider-ocm)</span>
+
 # Terraform provider for OCM
 
 > **IMPORTANT**: The version of the provider is currently 0.1 to indicate that
