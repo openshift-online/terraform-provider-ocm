@@ -6,9 +6,9 @@ resource "aws_iam_openid_connect_provider" "oidc_provider" {
     "sts.amazonaws.com"
   ]
 
-  tags = {
+  tags = merge(var.tags, {
     rosa_cluster_id = var.cluster_id
-  }
+  })
 
   thumbprint_list = [var.rh_oidc_provider_thumbprint]
 }
