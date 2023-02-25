@@ -63,3 +63,10 @@ type InstanceIAMRole struct {
 	MasterRoleARN types.String `tfsdk:"master_role_arn"`
 	WorkerRoleARN types.String `tfsdk:"worker_role_arn"`
 }
+
+type DataClusterRosaClassicState struct {
+	ID      types.String `tfsdk:"id"`
+	Name    types.String `tfsdk:"name"`
+	State   types.String `tfsdk:"state"`
+	Version types.String `tfsdk:"version"`
+}
