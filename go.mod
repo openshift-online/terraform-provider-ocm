@@ -3,6 +3,7 @@ module github.com/openshift-online/terraform-provider-ocm
 go 1.17
 
 require (
+	github.com/golang/mock v1.4.4
 	github.com/hashicorp/go-version v1.3.0
 	github.com/hashicorp/terraform-plugin-framework v0.5.0
 	github.com/hashicorp/terraform-plugin-go v0.5.0

@@ -19,24 +19,15 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	cmv1 "github.com/openshift-online/ocm-sdk-go/clustersmgmt/v1"
-	"github.com/openshift-online/ocm-sdk-go/errors"
-	"github.com/openshift-online/ocm-sdk-go/logging"
 )
-
-type ClusterResourceType struct {
-}
-
-type ClusterResource struct {
-	logger     logging.Logger
-	collection *cmv1.ClustersClient
+type ClusterResourceUtilsImpl struct {
+	clusterClient ClusterClient
 }
 
 func (t *ClusterResourceType) GetSchema(ctx context.Context) (result tfsdk.Schema,
@@ -243,8 +234,8 @@ func (t *ClusterResourceType) NewResource(ctx context.Context,
 	return
 }
 
-func createClusterObject(ctx context.Context,
-	state *ClusterState, diags diag.Diagnostics) (*cmv1.Cluster, error) {
+func (clusterUtils ClusterResourceUtilsImpl) createClusterObject(ctx context.Context,
+	state *ClusterState, diags Diagnostics) (*cmv1.Cluster, error) {
 	// Create the cluster:
 	builder := cmv1.NewCluster()
 	builder.Name(state.Name.Value)
@@ -351,6 +342,60 @@ func createClusterObject(ctx context.Context,
 	return object, err
 }
 
+type Diagnostics interface {
+	AddError(title, description string)
+}
+
+func (clusterUtils ClusterResourceUtilsImpl) create(ctx context.Context,
+	state *ClusterState, diags Diagnostics) error {
+
+	object, err := clusterUtils.createClusterObject(ctx, state, diags)
+	if err != nil {
+		diags.AddError(
+			"Can't build cluster",
+			fmt.Sprintf(
+				"Can't build cluster with name '%s': %v",
+				state.Name.Value, err,
+			),
+		)
+		return err
+	}
+
+	object, err = clusterUtils.clusterClient.Create(ctx, object)
+	if err != nil {
+		diags.AddError(
+			clusterCreationFailureMessage,
+			fmt.Sprintf(
+				"Can't create cluster with name '%s': %v",
+				state.Name.Value, err,
+			),
+		)
+		return err
+	}
+
+	// Wait till the cluster is ready unless explicitly disabled:
+	wait := state.Wait.Unknown || state.Wait.Null || state.Wait.Value
+	ready := object.State() == cmv1.ClusterStateReady
+	if wait && !ready {
+		err := clusterUtils.clusterClient.PollReady(ctx, object.ID())
+		if err != nil {
+			diags.AddError(
+				clusterPollFailure,
+				fmt.Sprintf(
+					"Can't poll state of cluster with identifier '%s': %v",
+					object.ID(), err,
+				),
+			)
+			return err
+		}
+	}
+
+	// Save the state:
+	clusterUtils.populateClusterState(object, state)
+
+	return nil
+}
+
 func (r *ClusterResource) Create(ctx context.Context,
 	request tfsdk.CreateResourceRequest, response *tfsdk.CreateResourceResponse) {
 	// Get the plan:
@@ -361,58 +406,15 @@ func (r *ClusterResource) Create(ctx context.Context,
 		return
 	}
 
-	object, err := createClusterObject(ctx, state, diags)
+	clusterClient := &ClusterClientImpl{InternalClient: r.collection}
+
+	clusterUtils := ClusterResourceUtilsImpl{clusterClient: clusterClient}
+
+	err := clusterUtils.create(ctx, state, &diags)
 	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't build cluster",
-			fmt.Sprintf(
-				"Can't build cluster with name '%s': %v",
-				state.Name.Value, err,
-			),
-		)
 		return
 	}
 
-	add, err := r.collection.Add().Body(object).SendContext(ctx)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't create cluster",
-			fmt.Sprintf(
-				"Can't create cluster with name '%s': %v",
-				state.Name.Value, err,
-			),
-		)
-		return
-	}
-	object = add.Body()
-
-	// Wait till the cluster is ready unless explicitly disabled:
-	wait := state.Wait.Unknown || state.Wait.Null || state.Wait.Value
-	ready := object.State() == cmv1.ClusterStateReady
-	if wait && !ready {
-		pollCtx, cancel := context.WithTimeout(ctx, 1*time.Hour)
-		defer cancel()
-		_, err := r.collection.Cluster(object.ID()).Poll().
-			Interval(30 * time.Second).
-			Predicate(func(get *cmv1.ClusterGetResponse) bool {
-				object = get.Body()
-				return object.State() == cmv1.ClusterStateReady
-			}).
-			StartContext(pollCtx)
-		if err != nil {
-			response.Diagnostics.AddError(
-				"Can't poll cluster state",
-				fmt.Sprintf(
-					"Can't poll state of cluster with identifier '%s': %v",
-					object.ID(), err,
-				),
-			)
-			return
-		}
-	}
-
-	// Save the state:
-	populateClusterState(object, state)
 	diags = response.State.Set(ctx, state)
 	response.Diagnostics.Append(diags...)
 }
@@ -426,6 +428,9 @@ func (r *ClusterResource) Read(ctx context.Context, request tfsdk.ReadResourceRe
 	if response.Diagnostics.HasError() {
 		return
 	}
+
+	clusterClient := &ClusterClientImpl{InternalClient: r.collection}
+	clusterUtils := ClusterResourceUtilsImpl{clusterClient: clusterClient}
 
 	// Find the cluster:
 	get, err := r.collection.Cluster(state.ID.Value).Get().SendContext(ctx)
@@ -442,9 +447,50 @@ func (r *ClusterResource) Read(ctx context.Context, request tfsdk.ReadResourceRe
 	object := get.Body()
 
 	// Save the state:
-	populateClusterState(object, state)
+	clusterUtils.populateClusterState(object, state)
 	diags = response.State.Set(ctx, state)
 	response.Diagnostics.Append(diags...)
+}
+
+func (clusterUtils ClusterResourceUtilsImpl) update(ctx context.Context,
+	currentState *ClusterState, desiredState *ClusterState, diags Diagnostics) error {
+
+	builder := cmv1.NewCluster()
+	nodes := cmv1.NewClusterNodes()
+	compute, ok := shouldPatchInt(currentState.ComputeNodes, desiredState.ComputeNodes)
+	if ok {
+		nodes.Compute(int(compute))
+	}
+	if !nodes.Empty() {
+		builder.Nodes(nodes)
+	}
+	patch, err := builder.Build()
+	if err != nil {
+		diags.AddError(
+			"Can't build cluster patch",
+			fmt.Sprintf(
+				"Can't build patch for cluster with identifier '%s': %v",
+				currentState.ID.Value, err,
+			),
+		)
+		return err
+	}
+	object, err := clusterUtils.clusterClient.Update(ctx, currentState.ID.Value, patch)
+	if err != nil {
+		diags.AddError(
+			clusterUpdateFailureMessage,
+			fmt.Sprintf(
+				"Can't update cluster with identifier '%s': %v",
+				currentState.ID.Value, err,
+			),
+		)
+		return err
+	}
+
+	// Update the state:
+	clusterUtils.populateClusterState(object, currentState)
+
+	return nil
 }
 
 func (r *ClusterResource) Update(ctx context.Context, request tfsdk.UpdateResourceRequest,
@@ -467,46 +513,48 @@ func (r *ClusterResource) Update(ctx context.Context, request tfsdk.UpdateResour
 		return
 	}
 
-	// Send request to update the cluster:
-	builder := cmv1.NewCluster()
-	var nodes *cmv1.ClusterNodesBuilder
-	compute, ok := shouldPatchInt(state.ComputeNodes, plan.ComputeNodes)
-	if ok {
-		nodes.Compute(int(compute))
-	}
-	if !nodes.Empty() {
-		builder.Nodes(nodes)
-	}
-	patch, err := builder.Build()
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't build cluster patch",
-			fmt.Sprintf(
-				"Can't build patch for cluster with identifier '%s': %v",
-				state.ID.Value, err,
-			),
-		)
-		return
-	}
-	update, err := r.collection.Cluster(state.ID.Value).Update().
-		Body(patch).
-		SendContext(ctx)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't update cluster",
-			fmt.Sprintf(
-				"Can't update cluster with identifier '%s': %v",
-				state.ID.Value, err,
-			),
-		)
-		return
-	}
-	object := update.Body()
+	clusterClient := &ClusterClientImpl{InternalClient: r.collection}
 
-	// Update the state:
-	populateClusterState(object, state)
+	clusterUtils := ClusterResourceUtilsImpl{clusterClient: clusterClient}
+	err := clusterUtils.update(ctx, state, plan, &diags)
+	if err != nil {
+		return
+	}
+
 	diags = response.State.Set(ctx, state)
 	response.Diagnostics.Append(diags...)
+}
+
+func (clusterUtils ClusterResourceUtilsImpl) delete(ctx context.Context,
+	id string, shouldPoll bool, diags Diagnostics) error {
+	err := clusterUtils.clusterClient.Delete(ctx, id)
+	if err != nil {
+		diags.AddError(
+			clusterDeleteFailureMessage,
+			fmt.Sprintf(
+				"Can't delete cluster with identifier '%s': %v",
+				id, err,
+			),
+		)
+		return err
+	}
+
+	// Wait till the cluster has been effectively deleted:
+	if shouldPoll {
+		err := clusterUtils.clusterClient.PollRemoved(ctx, id)
+		if err != nil {
+			diags.AddError(
+				clusterPollDeletionFailure,
+				fmt.Sprintf(
+					"Can't poll deletion of cluster with identifier '%s': %v",
+					id, err,
+				),
+			)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *ClusterResource) Delete(ctx context.Context, request tfsdk.DeleteResourceRequest,
@@ -519,42 +567,13 @@ func (r *ClusterResource) Delete(ctx context.Context, request tfsdk.DeleteResour
 		return
 	}
 
-	// Send the request to delete the cluster:
-	resource := r.collection.Cluster(state.ID.Value)
-	_, err := resource.Delete().SendContext(ctx)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't delete cluster",
-			fmt.Sprintf(
-				"Can't delete cluster with identifier '%s': %v",
-				state.ID.Value, err,
-			),
-		)
-		return
-	}
+	clusterClient := &ClusterClientImpl{InternalClient: r.collection}
 
-	// Wait till the cluster has been effectively deleted:
-	if state.Wait.Unknown || state.Wait.Null || state.Wait.Value {
-		pollCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-		defer cancel()
-		_, err := resource.Poll().
-			Interval(30 * time.Second).
-			Status(http.StatusNotFound).
-			StartContext(pollCtx)
-		sdkErr, ok := err.(*errors.Error)
-		if ok && sdkErr.Status() == http.StatusNotFound {
-			err = nil
-		}
-		if err != nil {
-			response.Diagnostics.AddError(
-				"Can't poll cluster deletion",
-				fmt.Sprintf(
-					"Can't poll deletion of cluster with identifier '%s': %v",
-					state.ID.Value, err,
-				),
-			)
-			return
-		}
+	clusterUtils := ClusterResourceUtilsImpl{clusterClient: clusterClient}
+	shouldPoll := state.Wait.Unknown || state.Wait.Null || state.Wait.Value
+	err := clusterUtils.delete(ctx, state.ID.Value, shouldPoll, &diags)
+	if err != nil {
+		return
 	}
 
 	// Remove the state:
@@ -577,15 +596,17 @@ func (r *ClusterResource) ImportState(ctx context.Context, request tfsdk.ImportR
 	}
 	object := get.Body()
 
+	clusterUtils := ClusterResourceUtilsImpl{}
+
 	// Save the state:
 	state := &ClusterState{}
-	populateClusterState(object, state)
+	clusterUtils.populateClusterState(object, state)
 	diags := response.State.Set(ctx, state)
 	response.Diagnostics.Append(diags...)
 }
 
 // populateClusterState copies the data from the API object to the Terraform state.
-func populateClusterState(object *cmv1.Cluster, state *ClusterState) {
+func (clusterUtils ClusterResourceUtilsImpl) populateClusterState(object *cmv1.Cluster, state *ClusterState) {
 	state.ID = types.String{
 		Value: object.ID(),
 	}

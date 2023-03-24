@@ -40,26 +40,6 @@ func (c MockHttpClient) Get(url string) (resp *http.Response, err error) {
 	return c.response, nil
 }
 
-const (
-	clusterId         = "1n2j3k4l5m6n7o8p9q0r"
-	clusterName       = "my-cluster"
-	regionId          = "us-east-1"
-	multiAz           = true
-	rosaCreatorArn    = "arn:aws:iam::123456789012:dummy/dummy"
-	apiUrl            = "https://api.my-cluster.com:6443"
-	consoleUrl        = "https://console.my-cluster.com"
-	machineType       = "m5.xlarge"
-	availabilityZone1 = "us-east-1a"
-	availabilityZone2 = "us-east-1b"
-	ccsEnabled        = true
-	awsAccountID      = "123456789012"
-	privateLink       = false
-	oidcEndpointUrl   = "example.com"
-	roleArn           = "arn:aws:iam::123456789012:role/role-name"
-	httpProxy         = "http://proxy.com"
-	httpsProxy        = "https://proxy.com"
-)
-
 var (
 	mockHttpClient = MockHttpClient{
 		response: &http.Response{
